@@ -25,12 +25,14 @@
 DA7212 audio;
 uLCD_4DGL uLCD(D1, D0, D2);
 InterruptIn sw2(SW2);
+// DigitalIn sw2(SW2);
 DigitalIn sw3(SW3);
 
 
 int16_t waveform[kAudioTxBufferSize];
 int output = 0;         // indicate the output patern
-bool Play_The_Music = false;
+bool Play_The_Music = false;    // indicate to play or stop the music or not
+int current_track = SONG1;       // the global variable for the current track
 
 void Play_Song(void);
 void Mode_Select(void);
@@ -43,7 +45,7 @@ void PlayMusic(void);
 Thread thread1 (osPriorityNormal, 120 * 1024);      // for DNN
 Thread thread2;                                     // for mode selection interrupt
 Thread thread3;                                     // for sound playing
-// Thread thread4;                                     // to make the sound playing module play out a note
+Thread thread4;                                     // to make the sound playing module play out a note
 EventQueue queue1(100 * EVENTS_EVENT_SIZE);         // for mode selection interrupt
 EventQueue queue2(32 * EVENTS_EVENT_SIZE);
 
@@ -62,7 +64,7 @@ void Mode_Select(void) {
     
     uLCD.cls();
     uLCD.color(BLUE);
-    uLCD.printf("\nFuck you Mode Select\n"); //Default Green on black text
+    uLCD.printf("\nMode Select\n"); //Default Green on black text
     uLCD.color(GREEN);
     uLCD.printf("Foward\n");
     uLCD.color(RED);
@@ -74,40 +76,50 @@ void Mode_Select(void) {
             uLCD.cls();
             uLCD.color(GREEN);
             if (current_mode == FOWARD) {
-                Play_The_Music = true;
-                uLCD.printf("\nPlaying the fucking song\n"); //Default Green on black text
+                uLCD.printf("\nPlaying\n"); //Default Green on black text
                 if (current_song == SONG1) {
                     uLCD.printf("\nPlaying song 2\n");
                     current_song = SONG2;
+                    current_track = SONG2;
+                    Play_The_Music = true;
                     return;
                 }
                 else if (current_song == SONG2) {
                     uLCD.printf("\nPlaying song 3\n");
                     current_song = SONG3;
+                    current_track = SONG3;
+                    Play_The_Music = true;
                     return;
                 }
                 else if (current_song == SONG3) {
                     uLCD.printf("\nPlaying song 1\n");
                     current_song = SONG1;
+                    current_track = SONG1;
+                    Play_The_Music = true;
                     return;
                 }
             }
             else if (current_mode == BACKWARD) {
-                Play_The_Music = true;
-                uLCD.printf("\nPlaying the fucking song\n"); //Default Green on black text
+                uLCD.printf("\nPlaying\n"); //Default Green on black text
                 if (current_song == SONG1) {
                     uLCD.printf("\nPlaying song 3\n");
                     current_song = SONG3;
+                    current_track = SONG3;
+                    Play_The_Music = true;
                     return;
                 }
                 else if (current_song == SONG2) {
                     uLCD.printf("\nPlaying song 1\n");
                     current_song = SONG1;
+                    current_track = SONG1;
+                    Play_The_Music = true;
                     return;
                 }
                 else if (current_song == SONG3) {
                     uLCD.printf("\nPlaying song 2\n");
                     current_song = SONG2;
+                    current_track = SONG2;
+                    Play_The_Music = true;
                     return;
                 }
             }
@@ -120,7 +132,7 @@ void Mode_Select(void) {
         else if(output == RING) {       // previous mode
             uLCD.cls();
             uLCD.color(BLUE);
-            uLCD.printf("\nFuck you Mode Select\n"); //Default Green on black text
+            uLCD.printf("\nMode Select\n"); //Default Green on black text
             if (current_mode == FOWARD) {
                 uLCD.color(RED);
                 uLCD.printf("Foward\n");
@@ -151,7 +163,7 @@ void Mode_Select(void) {
         else if(output == SLOPE) {      // next mode
             uLCD.cls();
             uLCD.color(BLUE);
-            uLCD.printf("\nFuck you Mode Select\n"); //Default Green on black text
+            uLCD.printf("\nMode Select\n"); //Default Green on black text
             if (current_mode == BACKWARD) {
                 uLCD.color(RED);
                 uLCD.printf("Foward\n");
@@ -189,7 +201,7 @@ void Play_Song(void) {
     Play_The_Music = true;
     uLCD.cls();
     uLCD.color(GREEN);
-    uLCD.printf("\nPlaying the fucking song\n"); //Default Green on black text
+    uLCD.printf("\nPlaying\n"); //Default Green on black text
     uLCD.printf("\nPlaying song 1");
     
     while(1) {
@@ -211,8 +223,9 @@ void Song_Select(void) {
         if (!sw3) {
             uLCD.cls();
             uLCD.color(GREEN);
-            uLCD.printf("\nPlaying the fucking song\n");
+            uLCD.printf("\nPlaying\n");
             uLCD.printf("\nPlaying song %d\n", current_song);
+            current_track = current_song;
             Play_The_Music = true;
             return;
         }
@@ -436,24 +449,48 @@ void DNN(void) {
     }
 }
 // **************************************Note playing*******************************************//
-int song[42] = {
+int song[44] = {
     261, 261, 392, 392, 440, 440, 392,
     349, 349, 330, 330, 294, 294, 261,
     392, 392, 349, 349, 330, 330, 294,
     392, 392, 349, 349, 330, 330, 294,
     261, 261, 392, 392, 440, 440, 392,
-    349, 349, 330, 330, 294, 294, 261
+    349, 349, 330, 330, 294, 294, 261,
+    0, 0
 };
-
-int noteLength[42] = {
+int song2[32] {
+    329, 293, 261, 293, 329, 329, 329, 329, 
+    293, 293, 293, 293, 329, 391, 391, 391, 
+    329, 293, 261, 293, 329, 329, 329, 329, 
+    293, 293, 329, 293, 261, 261, 0, 0
+};
+int song3[32] {
+    391, 329, 329, 329, 349, 293, 293, 293, 
+    261, 293, 329, 349, 391, 391, 391, 391, 
+    391, 329, 329, 329, 349, 293, 293, 293, 
+    261, 329, 391, 391, 261, 261, 0, 0
+};
+int noteLength[44] = {
     1, 1, 1, 1, 1, 1, 2,
     1, 1, 1, 1, 1, 1, 2,
     1, 1, 1, 1, 1, 1, 2,
     1, 1, 1, 1, 1, 1, 2,
     1, 1, 1, 1, 1, 1, 2,
-    1, 1, 1, 1, 1, 1, 2
+    1, 1, 1, 1, 1, 1, 2,
+    1, 1
 }; 
-
+int noteLength2[32] {
+    1, 1, 1, 1, 1, 1, 1, 1, 
+    1, 1, 1, 1, 1, 1, 1, 1, 
+    1, 1, 1, 1, 1, 1, 1, 1, 
+    1, 1, 1, 1, 1, 1, 1, 1
+};
+int noteLength3[32] {
+    1, 1, 1, 1, 1, 1, 1, 1, 
+    1, 1, 1, 1, 1, 1, 1, 1, 
+    1, 1, 1, 1, 1, 1, 1, 1, 
+    1, 1, 1, 1, 1, 1, 1, 1
+};
 void playNote(int freq) {
     for(int i = 0; i < kAudioTxBufferSize; i++) {
         waveform[i] = (int16_t) (sin((double)i * 2. * M_PI/(double) (kAudioSampleFrequency / freq)) * ((1<<16) - 1));
@@ -462,15 +499,40 @@ void playNote(int freq) {
 }
 void PlayMusic(void) {
     thread3.start(callback(&queue2, &EventQueue::dispatch_forever));
-
-    for(int i = 0; i < 42 && Play_The_Music; i++) {
-        int length = noteLength[i];
-        while(length-- && Play_The_Music) {
-        // the loop below will play the note for the duration of 1s
-            for(int j = 0; j < kAudioSampleFrequency / kAudioTxBufferSize  && Play_The_Music; ++j) {
-                queue2.call(playNote, song[i]);
+    if (current_track == SONG1 && Play_The_Music) {
+        for(int i = 0; i < 44 && Play_The_Music; i++) {
+            int length = noteLength[i];
+            while(length-- && Play_The_Music) {
+            // the loop below will play the note for the duration of 1s
+                for(int j = 0; j < kAudioSampleFrequency / kAudioTxBufferSize  && Play_The_Music; ++j) {
+                    queue2.call(playNote, song[i]);
+                }
+                if(length < 1) wait(0.5);
             }
-            if(length < 1) wait(0.5);
+        }
+    }
+    else if (current_track == SONG2 && Play_The_Music) {
+        for(int i = 0; i < 32 && Play_The_Music; i++) {
+            int length = noteLength2[i];
+            while(length-- && Play_The_Music) {
+            // the loop below will play the note for the duration of 1s
+                for(int j = 0; j < kAudioSampleFrequency / kAudioTxBufferSize  && Play_The_Music; ++j) {
+                    queue2.call(playNote, song2[i]);
+                }
+                if(length < 1) wait(0.5);
+            }
+        }
+    }
+    else if (current_track == SONG3 && Play_The_Music) {
+        for(int i = 0; i < 32 && Play_The_Music; i++) {
+            int length = noteLength3[i];
+            while(length-- && Play_The_Music) {
+            // the loop below will play the note for the duration of 1s
+                for(int j = 0; j < kAudioSampleFrequency / kAudioTxBufferSize  && Play_The_Music; ++j) {
+                    queue2.call(playNote, song3[i]);
+                }
+                if(length < 1) wait(0.5);
+            }
         }
     }
     if (!Play_The_Music)
