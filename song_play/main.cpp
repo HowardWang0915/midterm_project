@@ -12,10 +12,11 @@
 #include "tensorflow/lite/version.h"
 #include <cmath>
 #include "DA7212.h"
-
+#include <stdlib.h>
 #define FOWARD 0
 #define BACKWARD 1
 #define CHANGESONG 2
+#define TAIKO 3
 #define SONG1 1
 #define SONG2 2
 #define SONG3 3
@@ -24,10 +25,11 @@
 
 DA7212 audio;
 uLCD_4DGL uLCD(D1, D0, D2);
-InterruptIn sw2(SW2);
-// DigitalIn sw2(SW2);
+Serial pc(USBTX, USBRX);
+// InterruptIn sw2(SW2);
+DigitalIn sw2(SW2);
 DigitalIn sw3(SW3);
-
+DigitalOut green_led(LED2);
 
 int16_t waveform[kAudioTxBufferSize];
 int output = 0;         // indicate the output patern
@@ -41,19 +43,24 @@ int PredictGesture(float* output);
 void DNN(void);
 void playNote(int freq);
 void PlayMusic(void);
-
+void loadSignal(void);
+void Taiko(void);       // the Taiko game
 Thread thread1 (osPriorityNormal, 120 * 1024);      // for DNN
 Thread thread2;                                     // for mode selection interrupt
-Thread thread3;                                     // for sound playing
-Thread thread4;                                     // to make the sound playing module play out a note
+Thread thread3;                                     // for note generating
+Thread thread4;                                     // for signal sending
+Thread thread5;                                     // Play Music
+Thread thread6;                                     // Play_song main display
 EventQueue queue1(100 * EVENTS_EVENT_SIZE);         // for mode selection interrupt
 EventQueue queue2(32 * EVENTS_EVENT_SIZE);
 
 int main(void) {
     thread1.start(DNN);
-    while(true) {
-        Play_Song();
-    }
+    thread5.start(PlayMusic);
+    thread6.start(Play_Song);
+    wait(5);
+    thread4.start(loadSignal);
+    
 }
 
 void Mode_Select(void) {
@@ -70,6 +77,7 @@ void Mode_Select(void) {
     uLCD.color(RED);
     uLCD.printf("Backward\n");
     uLCD.printf("Change song\n");
+    uLCD.printf("Taiko\n");
     while(1) {
         // returning to play song
         if (!sw3) {
@@ -127,7 +135,18 @@ void Mode_Select(void) {
                 Song_Select();
                 return;
             }
-            // return;
+            else if (current_mode == TAIKO) {
+                current_song = SONG1;
+                current_track = SONG1;
+                Play_The_Music = true;
+                Taiko();
+                uLCD.color(GREEN);
+                uLCD.printf("\nPlaying\n");
+                uLCD.printf("\nPlaying song 1\n");
+                Play_The_Music = true;
+                return;
+            }
+            
         }
         else if(output == RING) {       // previous mode
             uLCD.cls();
@@ -137,9 +156,10 @@ void Mode_Select(void) {
                 uLCD.color(RED);
                 uLCD.printf("Foward\n");
                 uLCD.printf("Backward\n");
-                uLCD.color(GREEN);
                 uLCD.printf("Change song\n");
-                current_mode = CHANGESONG;
+                uLCD.color(GREEN);
+                uLCD.printf("Taiko\n");
+                current_mode = TAIKO;
             }
             else if (current_mode == BACKWARD) {
                 uLCD.color(GREEN);
@@ -147,6 +167,7 @@ void Mode_Select(void) {
                 uLCD.color(RED);
                 uLCD.printf("Backward\n");
                 uLCD.printf("Change song\n");
+                uLCD.printf("Taiko\n");
                 current_mode = FOWARD;
             }
             else if (current_mode == CHANGESONG) {
@@ -156,7 +177,18 @@ void Mode_Select(void) {
                 uLCD.printf("Backward\n");
                 uLCD.color(RED);
                 uLCD.printf("Change song\n");
+                uLCD.printf("Taiko\n");
                 current_mode = BACKWARD;
+            }
+            else if (current_mode == TAIKO) {
+                uLCD.color(RED);
+                uLCD.printf("Foward\n");
+                uLCD.printf("Backward\n");
+                uLCD.color(GREEN);
+                uLCD.printf("Change song\n");
+                uLCD.color(RED);
+                uLCD.printf("Taiko\n");
+                current_mode = CHANGESONG;
             }
             wait(0.1);
         }
@@ -170,15 +202,18 @@ void Mode_Select(void) {
                 uLCD.printf("Backward\n");
                 uLCD.color(GREEN);
                 uLCD.printf("Change song\n");
+                uLCD.color(RED);
+                uLCD.printf("Taiko\n");
                 current_mode = CHANGESONG;
             }
             else if (current_mode == CHANGESONG) {
-                uLCD.color(GREEN);
-                uLCD.printf("Foward\n");
                 uLCD.color(RED);
+                uLCD.printf("Foward\n");
                 uLCD.printf("Backward\n");
                 uLCD.printf("Change song\n");
-                current_mode = FOWARD;
+                uLCD.color(GREEN);
+                uLCD.printf("Taiko\n");
+                current_mode = TAIKO;
             }
             else if (current_mode == FOWARD) {
                 uLCD.color(RED);
@@ -187,7 +222,17 @@ void Mode_Select(void) {
                 uLCD.printf("Backward\n");
                 uLCD.color(RED);
                 uLCD.printf("Change song\n");
+                uLCD.printf("Taiko\n");
                 current_mode = BACKWARD;
+            }
+            else if (current_mode == TAIKO) {
+                uLCD.color(GREEN);
+                uLCD.printf("Foward\n");
+                uLCD.color(RED);
+                uLCD.printf("Backward\n");
+                uLCD.printf("Change song\n");
+                uLCD.printf("Taiko\n");
+                current_mode = FOWARD;
             }
             wait(0.1);
         }
@@ -196,8 +241,8 @@ void Mode_Select(void) {
 void Play_Song(void) {
     // sw2.rise(&Mode_Select);
     
-    thread2.start(callback(&queue1, &EventQueue::dispatch_forever));
-    sw2.rise(queue1.event(Mode_Select));
+    // thread2.start(callback(&queue1, &EventQueue::dispatch_forever));
+    // sw2.rise(queue1.event(Mode_Select));
     Play_The_Music = true;
     uLCD.cls();
     uLCD.color(GREEN);
@@ -205,7 +250,8 @@ void Play_Song(void) {
     uLCD.printf("\nPlaying song 1");
     
     while(1) {
-        PlayMusic();
+        if (!sw2)
+            Mode_Select();
     }
 }
 
@@ -499,42 +545,115 @@ void playNote(int freq) {
 }
 void PlayMusic(void) {
     thread3.start(callback(&queue2, &EventQueue::dispatch_forever));
-    if (current_track == SONG1 && Play_The_Music) {
-        for(int i = 0; i < 44 && Play_The_Music; i++) {
-            int length = noteLength[i];
-            while(length-- && Play_The_Music) {
-            // the loop below will play the note for the duration of 1s
-                for(int j = 0; j < kAudioSampleFrequency / kAudioTxBufferSize  && Play_The_Music; ++j) {
-                    queue2.call(playNote, song[i]);
+    while(true) {
+        if (current_track == SONG1 && Play_The_Music) {
+            for(int i = 0; i < 44 && Play_The_Music; i++) {
+                int length = noteLength[i];
+                while(length-- && Play_The_Music) {
+                // the loop below will play the note for the duration of 1s
+                    for(int j = 0; j < kAudioSampleFrequency / kAudioTxBufferSize  && Play_The_Music; ++j) {
+                        queue2.call(playNote, song[i]);
+                    }
+                    if(length < 1) wait(0.5);
                 }
-                if(length < 1) wait(0.5);
             }
         }
-    }
-    else if (current_track == SONG2 && Play_The_Music) {
-        for(int i = 0; i < 32 && Play_The_Music; i++) {
-            int length = noteLength2[i];
-            while(length-- && Play_The_Music) {
-            // the loop below will play the note for the duration of 1s
-                for(int j = 0; j < kAudioSampleFrequency / kAudioTxBufferSize  && Play_The_Music; ++j) {
-                    queue2.call(playNote, song2[i]);
+        else if (current_track == SONG2 && Play_The_Music) {
+            for(int i = 0; i < 32 && Play_The_Music; i++) {
+                int length = noteLength2[i];
+                while(length-- && Play_The_Music) {
+                // the loop below will play the note for the duration of 1s
+                    for(int j = 0; j < kAudioSampleFrequency / kAudioTxBufferSize  && Play_The_Music; ++j) {
+                        queue2.call(playNote, song2[i]);
+                    }
+                    if(length < 1) wait(0.5);
                 }
-                if(length < 1) wait(0.5);
             }
         }
-    }
-    else if (current_track == SONG3 && Play_The_Music) {
-        for(int i = 0; i < 32 && Play_The_Music; i++) {
-            int length = noteLength3[i];
-            while(length-- && Play_The_Music) {
-            // the loop below will play the note for the duration of 1s
-                for(int j = 0; j < kAudioSampleFrequency / kAudioTxBufferSize  && Play_The_Music; ++j) {
-                    queue2.call(playNote, song3[i]);
+        else if (current_track == SONG3 && Play_The_Music) {
+            for(int i = 0; i < 32 && Play_The_Music; i++) {
+                int length = noteLength3[i];
+                while(length-- && Play_The_Music) {
+                // the loop below will play the note for the duration of 1s
+                    for(int j = 0; j < kAudioSampleFrequency / kAudioTxBufferSize  && Play_The_Music; ++j) {
+                        queue2.call(playNote, song3[i]);
+                    }
+                    if(length < 1) wait(0.5);
                 }
-                if(length < 1) wait(0.5);
             }
         }
+        if (!Play_The_Music)
+            queue2.call(playNote, 0);
     }
-    if (!Play_The_Music)
-        queue2.call(playNote, 0);
+}
+void loadSignal(void) {
+    int signalLength = 32;
+    int bufferLength = 32;
+    char serialInBuffer[bufferLength];
+    int signal[signalLength] = {0};
+    int i = 0;
+    int serialCount = 0;
+    
+    // audio.spk.pause();
+    while(i < signalLength) {
+        if(pc.readable()) {
+            green_led = 0;
+            serialInBuffer[serialCount] = pc.getc();
+            serialCount++;
+            if(serialCount == 3) {
+                serialInBuffer[serialCount] = '\0';
+                signal[i] = atoi(serialInBuffer);
+                song3[i] = signal[i];
+                pc.printf("%d\n\r", song3[i]);
+                i++;
+                serialCount = 0;
+            }
+        }
+        green_led = 1;
+        
+        // 
+    }
+    green_led = 0;    
+}
+void Taiko(void) {
+    int x = 64;
+    int y = 0;
+    int score = 0;
+    bool pointed = false;       // allow getting point only one time
+    bool red = true;
+    uLCD.background_color(BLACK);
+    uLCD.cls();
+    uLCD.line(0, 100, 127, 100, WHITE);
+    uLCD.circle(64, 100, 10, WHITE);
+    while(sw3) {
+        if (red == true) {
+            uLCD.filled_circle(x, y, 5, RED);
+        }
+        else {
+            uLCD.filled_circle(x, y, 5, GREEN);
+        }
+        //
+        if ((y > 85 && y < 115) && output == SLOPE && !pointed && red) {
+            score += 2;
+            pointed = true;
+        }
+        else if ((y > 70 && y < 115) && output == RING && !pointed && !red) {
+            score += 2;
+            pointed = true;
+        }
+        //
+        if (y > 132) {
+            uLCD.line(0, 100, 127, 100, WHITE);
+            uLCD.circle(64, 100, 10, WHITE);
+            pointed = false;
+            red = !red;
+            y = 0;
+        }
+        uLCD.filled_circle(x, y, 5, BLACK);
+        uLCD.locate(1, 2);
+        uLCD.printf("%d", score);
+        y += 4;
+    }
+    uLCD.cls();
+    return;
 }
