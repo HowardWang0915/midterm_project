@@ -12,7 +12,7 @@ signalTable = [261, 293, 329, 349, 391, 440, 493, 523,
 261, 293, 329, 349, 391, 440, 493, 523
 ]
 # output formatter
-formatter = lambda x: "%d" % x
+formatter = lambda x: "%3d" % x
 
 # send the waveform table to K66F
 serdev = '/dev/ttyACM0'

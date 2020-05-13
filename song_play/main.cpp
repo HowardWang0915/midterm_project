@@ -35,7 +35,7 @@ int16_t waveform[kAudioTxBufferSize];
 int output = 0;         // indicate the output patern
 bool Play_The_Music = false;    // indicate to play or stop the music or not
 int current_track = SONG1;       // the global variable for the current track
-
+bool load_song = false;
 void Play_Song(void);
 void Mode_Select(void);
 void Song_Select(void);
@@ -58,9 +58,7 @@ int main(void) {
     thread1.start(DNN);
     thread5.start(PlayMusic);
     thread6.start(Play_Song);
-    wait(5);
     thread4.start(loadSignal);
-    
 }
 
 void Mode_Select(void) {
@@ -252,6 +250,8 @@ void Play_Song(void) {
     while(1) {
         if (!sw2)
             Mode_Select();
+        if (!sw3)
+            load_song = true;
     }
 }
 
@@ -593,27 +593,34 @@ void loadSignal(void) {
     int signal[signalLength] = {0};
     int i = 0;
     int serialCount = 0;
-    
+    char trash;
     // audio.spk.pause();
-    while(i < signalLength) {
-        if(pc.readable()) {
-            green_led = 0;
-            serialInBuffer[serialCount] = pc.getc();
-            serialCount++;
-            if(serialCount == 3) {
-                serialInBuffer[serialCount] = '\0';
-                signal[i] = atoi(serialInBuffer);
-                song3[i] = signal[i];
-                pc.printf("%d\n\r", song3[i]);
-                i++;
-                serialCount = 0;
+    while (true) {
+        if (pc.readable() && !load_song)
+            trash = pc.getc();
+        while(i < signalLength && load_song) {
+            green_led = 1;  
+            if(pc.readable()) {
+                
+                serialInBuffer[serialCount] = pc.getc();
+                serialCount++;
+                if(serialCount == 3) {
+                    green_led = 0;
+                    serialInBuffer[serialCount] = '\0';
+                    signal[i] = atoi(serialInBuffer);
+                    song3[i] = signal[i];
+                    pc.printf("%d\n\r", song3[i]);
+                    i++;
+                    serialCount = 0;
+                }
             }
         }
-        green_led = 1;
-        
         // 
+        if (i == signalLength)
+            break;
     }
-    green_led = 0;    
+    // load_song = false;
+      
 }
 void Taiko(void) {
     int x = 64;
